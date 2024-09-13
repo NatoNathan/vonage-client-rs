@@ -1,0 +1,32 @@
+[package]
+name = "vonage-client"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Nathan Tamez <nat@tamez.email>"]
+
+[features]
+default = ["all"]
+all = ["conversation", "voice"]
+conversation = []
+voice = []
+mocking = []
+
+
+[dependencies]
+log = { version = "0.4" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+tokio = { version = "1.40", features = ["full"] }
+async-trait = { version = "0.1.82" }
+reqwest = { version = "0.12", features = ["json"] }
+jsonwebtoken = { version = "9.3.0" }
+lazy_static = { version = "1.5.0" }
+nanoid = { version = "0.4.0" }
+time = { version = "0.3.36", features = ["macros"] }
+url = { version = "2.5.2", features = ["serde"] }
+
+[dev_dependencies]
+pretty_env_logger = "0.5"
+rocket = { version = "0.5.1", features = ["json"] }
+lazy_static = { version = "1.5.0" }
