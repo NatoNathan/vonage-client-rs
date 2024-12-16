@@ -1,4 +1,5 @@
 mod user;
+mod webhooks;
 use crate::client::{VonageClient, VonageClientError};
 pub use user::{User, UserListPage};
 
