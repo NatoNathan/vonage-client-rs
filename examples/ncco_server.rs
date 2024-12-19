@@ -1,7 +1,14 @@
 extern crate pretty_env_logger;
 #[macro_use]
 extern crate rocket;
-use rocket::serde::json::Json;
+use std::sync::Arc;
+
+use ngrok::prelude::*;
+use ngrok::tunnel::HttpTunnel;
+use ngrok::forwarder::Forwarder;
+use url::Url;
+
+use rocket::{futures::lock::Mutex, serde::json::Json};
 use rocket_ws::Message;
 use vonage_client::{
     compose, voice::webhooks::{CallEventPayload, VoiceAnswerPayload}, AudioFormat, EventMethod, NCCO
@@ -10,12 +17,13 @@ use vonage_client::{
 static USER_TO_CALL: &str = "bob";
 
 #[post("/voice/answer", data = "<answer>")]
-fn answer_server_call(
+async fn answer_server_call(
     answer: Json<VoiceAnswerPayload>,
     public_url: &rocket::State<PublicUrl>,
 ) -> Json<NCCO> {
     log::info!("Answer Payload: {:?}", answer);
-    let public_url = public_url.0.as_ref().unwrap();
+    let public_url = public_url.0.lock().await;
+    let public_url = public_url.url().to_string();
 
     let ncco = NCCO::new()
         .talk_with(
@@ -26,9 +34,9 @@ fn answer_server_call(
                 premium(true)
             ),
         )
-        .connect_app(USER_TO_CALL.into())
-        // .connect_websocket(format!("{}/echo", public_url.clone()).replace("http", "ws"), AudioFormat::L16_16K)
-        .conversation("CON-14".into());
+        // .connect_app(USER_TO_CALL.into())
+        .connect_websocket(format!("{}/echo", public_url.clone()).replace("http", "ws"), AudioFormat::L16_16K);
+        // .conversation("CON-14".into());
 
     log::info!("NCCO: {:?}", ncco);
 
@@ -72,14 +80,32 @@ fn echo(ws: rocket_ws::WebSocket) -> rocket_ws::Channel<'static> {
 }
 
 
-struct PublicUrl(Option<String>);
+struct PublicUrl(Arc<Mutex<Box<Forwarder<HttpTunnel>>>>);
+
+async fn listen_ngrok() -> anyhow::Result<Forwarder<HttpTunnel>> {
+    let sess = ngrok::Session::builder()
+        .authtoken_from_env()
+        .connect()
+        .await?;
+
+    let tun = sess
+        .http_endpoint()
+        .listen_and_forward(Url::parse("http://localhost:8000")?)
+        .await?;
+
+    println!("Listening on URL: {:?}", tun.url());
+
+    Ok(tun)
+}
 
 #[launch]
-fn rocket() -> _ {
+async fn rocket() -> _ {
     pretty_env_logger::formatted_timed_builder()
         .filter_level(log::LevelFilter::Info)
         .init();
+
+    let tun = listen_ngrok().await.unwrap();
     rocket::build()
-        .manage(PublicUrl(std::env::var("PUBLIC_URL").ok()))
+        .manage(PublicUrl(Arc::new(Mutex::new(Box::new(tun)))))
         .mount("/", routes![answer_server_call, event_server_call, echo])
 }
